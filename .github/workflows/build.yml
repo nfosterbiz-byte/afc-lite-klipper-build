@@ -17,7 +17,7 @@ jobs:
         with:
           repository: Klipper3d/klipper
           path: klipper
-          # Optionally pin to a known tag:
+          # You can pin to a release if you prefer:
           # ref: v0.12.0
 
       - name: Install ARM toolchain & deps
@@ -25,27 +25,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      - name: Build firmware (isolate source path to avoid duplicates)
+      - name: Patch Makefile to force board link, then build (single-thread)
         run: |
           set -euxo pipefail
           cd klipper
           cp ../myrepo/.config .config
 
-          # Start clean
+          # 1) Patch the create-board-link rule so it never points to '.'
+          # Original line is like:
+          #   ln -snf $(if $(wildcard out/board-link),$(BOARD_DIRECTORY),.) out/board
+          # Replace it to always use $(BOARD_DIRECTORY)
+          sed -i -E 's|ln -snf .*\$\(BOARD_DIRECTORY\).*|ln -snf $(BOARD_DIRECTORY) out/board|' Makefile
+          sed -i -E 's|ln -snf .* out/board|ln -snf $(BOARD_DIRECTORY) out/board|' Makefile
+
+          # 2) Clean and build with an explicit BOARD_DIRECTORY
           rm -rf out
           mkdir -p out/board-generic
-          # Force out/board to a SEPARATE dir, not repo root:
-          ln -sfn out/board-generic out/board
-          # Inside out/board, expose the real sources *once* via a single symlink:
-          ln -sfn ../src out/board-generic/src
+          # Touch the marker (not strictly needed after the patch, but harmless)
+          : > out/board-link
 
-          # Show the links for debugging
+          make BOARD_DIRECTORY=out/board-generic clean
+          make -j1 BOARD_DIRECTORY=out/board-generic
+
+          # Show what got created (for debugging if needed)
           ls -l out
-          ls -l out/board-generic
-
-          # Clean & build with VPATH restricted to the single visible path
-          make VPATH="out/board/src out/board-generic" clean
-          make -j1 VPATH="out/board/src out/board-generic"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
