@@ -1,0 +1,43 @@
+name: Build Klipper for AFC-Lite (STM32H723)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".config"
+      - ".github/workflows/build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout klipper source
+        uses: actions/checkout@v4
+        with:
+          repository: Klipper3d/klipper
+          path: klipper
+
+      - name: Copy provided .config
+        run: cp ./.config ./klipper/.config
+        shell: bash
+
+      - name: Install ARM toolchain & build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
+        shell: bash
+
+      - name: Build firmware (single-thread to avoid races)
+        run: |
+          cd klipper
+          make clean
+          make -j1
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: klipper-afc-lite-h723-usb
+          path: |
+            klipper/out/klipper.bin
+            klipper/.config
