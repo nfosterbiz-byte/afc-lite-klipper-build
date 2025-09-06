@@ -17,25 +17,35 @@ jobs:
         with:
           repository: Klipper3d/klipper
           path: klipper
+          # Optionally pin to a known tag:
+          # ref: v0.12.0
 
       - name: Install ARM toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      - name: Build firmware (force board dir so no double-scan)
+      - name: Build firmware (isolate source path to avoid duplicates)
         run: |
           set -euxo pipefail
           cd klipper
           cp ../myrepo/.config .config
 
-          # Ensure the target board directory exists and is empty (no src mirror)
+          # Start clean
           rm -rf out
           mkdir -p out/board-generic
+          # Force out/board to a SEPARATE dir, not repo root:
+          ln -sfn out/board-generic out/board
+          # Inside out/board, expose the real sources *once* via a single symlink:
+          ln -sfn ../src out/board-generic/src
 
-          # Build single-threaded and FORCE out/board -> out/board-generic
-          make BOARD_DIRECTORY=out/board-generic clean
-          make -j1 BOARD_DIRECTORY=out/board-generic
+          # Show the links for debugging
+          ls -l out
+          ls -l out/board-generic
+
+          # Clean & build with VPATH restricted to the single visible path
+          make VPATH="out/board/src out/board-generic" clean
+          make -j1 VPATH="out/board/src out/board-generic"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
