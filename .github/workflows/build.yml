@@ -7,43 +7,36 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      # 1) Checkout your repo (contains .config)
-      - name: Checkout config repo
+      - name: Checkout config repo (this repo)
         uses: actions/checkout@v4
         with:
           path: myrepo
 
-      # 2) Checkout upstream Klipper sources
-      - name: Checkout Klipper
+      - name: Checkout Klipper sources
         uses: actions/checkout@v4
         with:
           repository: Klipper3d/klipper
           path: klipper
 
-      # 3) Toolchain
       - name: Install ARM toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # 4) Copy .config, PRE-pin board link, and build with VPATH override
-      - name: Build (force single source path)
+      - name: Build firmware (force board dir so no double-scan)
         run: |
           set -euxo pipefail
           cd klipper
           cp ../myrepo/.config .config
 
-          # PRE-PIN: ensure out/board points at out/board-generic (not src)
+          # Ensure the target board directory exists and is empty (no src mirror)
           rm -rf out
           mkdir -p out/board-generic
-          ln -sfn out/board-generic out/board
-          : > out/board-link   # tells Makefile the link is already created
 
-          # Clean with VPATH override, then build single-threaded with same override
-          make VPATH="out/board/src out/board-generic" clean
-          make -j1 VPATH="out/board/src out/board-generic"
+          # Build single-threaded and FORCE out/board -> out/board-generic
+          make BOARD_DIRECTORY=out/board-generic clean
+          make -j1 BOARD_DIRECTORY=out/board-generic
 
-      # 5) Upload firmware
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
