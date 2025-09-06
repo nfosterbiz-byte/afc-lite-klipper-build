@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      # 1) Checkout your repo (holds .config)
+      # 1) Checkout your repo (contains .config)
       - name: Checkout config repo
         uses: actions/checkout@v4
         with:
@@ -26,29 +26,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # 4) Copy .config, stabilise board link, patch VPATH, build single-threaded
-      - name: Build firmware (fix duplicate-scan)
+      # 4) Copy .config, PRE-pin board link, and build with VPATH override
+      - name: Build (force single source path)
         run: |
           set -euxo pipefail
           cd klipper
           cp ../myrepo/.config .config
 
-          # Pre-create a stable board link so Makefile won't re-point it to src
+          # PRE-PIN: ensure out/board points at out/board-generic (not src)
+          rm -rf out
           mkdir -p out/board-generic
           ln -sfn out/board-generic out/board
-          : > out/board-link
+          : > out/board-link   # tells Makefile the link is already created
 
-          # Patch VPATH to avoid scanning both src and out/board/src
-          # Keep only out/board/src and out/board-generic.
-          sed -i -E 's/^VPATH[[:space:]]*=[[:space:]]*src[[:space:]]+out\/board\/src[[:space:]]+out\/board-generic/VPATH = out\/board\/src out\/board-generic/' Makefile || true
-          sed -i -E 's/^VPATH[[:space:]]*=[[:space:]]*src(.*out\/board\/src[[:space:]]+out\/board-generic)/VPATH = \1/' Makefile || true
-          # Fallback: if a different spacing exists, force-set VPATH:
-          if ! grep -q '^VPATH *= *out/board/src out/board-generic' Makefile; then
-            sed -i -E 's/^VPATH.*/VPATH = out\/board\/src out\/board-generic/' Makefile
-          fi
-
-          make clean
-          make -j1
+          # Clean with VPATH override, then build single-threaded with same override
+          make VPATH="out/board/src out/board-generic" clean
+          make -j1 VPATH="out/board/src out/board-generic"
 
       # 5) Upload firmware
       - name: Upload artifact
