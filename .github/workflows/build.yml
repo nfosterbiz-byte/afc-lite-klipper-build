@@ -7,34 +7,50 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      # Checkout your repo (contains .config)
+      # 1) Checkout your repo (holds .config)
       - name: Checkout config repo
         uses: actions/checkout@v4
         with:
           path: myrepo
 
-      # Checkout upstream Klipper source
+      # 2) Checkout upstream Klipper sources
       - name: Checkout Klipper
         uses: actions/checkout@v4
         with:
           repository: Klipper3d/klipper
           path: klipper
 
-      # Install toolchain
-      - name: Install ARM toolchain & build deps
+      # 3) Toolchain
+      - name: Install ARM toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # Copy config into Klipper and build
-      - name: Build firmware
+      # 4) Copy .config, stabilise board link, patch VPATH, build single-threaded
+      - name: Build firmware (fix duplicate-scan)
         run: |
-          cp myrepo/.config klipper/.config
+          set -euxo pipefail
           cd klipper
+          cp ../myrepo/.config .config
+
+          # Pre-create a stable board link so Makefile won't re-point it to src
+          mkdir -p out/board-generic
+          ln -sfn out/board-generic out/board
+          : > out/board-link
+
+          # Patch VPATH to avoid scanning both src and out/board/src
+          # Keep only out/board/src and out/board-generic.
+          sed -i -E 's/^VPATH[[:space:]]*=[[:space:]]*src[[:space:]]+out\/board\/src[[:space:]]+out\/board-generic/VPATH = out\/board\/src out\/board-generic/' Makefile || true
+          sed -i -E 's/^VPATH[[:space:]]*=[[:space:]]*src(.*out\/board\/src[[:space:]]+out\/board-generic)/VPATH = \1/' Makefile || true
+          # Fallback: if a different spacing exists, force-set VPATH:
+          if ! grep -q '^VPATH *= *out/board/src out/board-generic' Makefile; then
+            sed -i -E 's/^VPATH.*/VPATH = out\/board\/src out\/board-generic/' Makefile
+          fi
+
           make clean
           make -j1
 
-      # Upload the built firmware
+      # 5) Upload firmware
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
