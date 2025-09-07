@@ -7,29 +7,25 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      # Checkout your repo (holds .config)
-      - name: Checkout config repo
+      - name: Checkout config repo (this repo)
         uses: actions/checkout@v4
         with:
           path: myrepo
 
-      # Checkout upstream Klipper sources
-      - name: Checkout Klipper
+      - name: Checkout Klipper sources
         uses: actions/checkout@v4
         with:
           repository: Klipper3d/klipper
           path: klipper
-          # Optional: pin to a tag known-good for you
+          # Optional pin:
           # ref: v0.12.0
 
-      # Toolchain
       - name: Install ARM toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # Build (isolate source path, expose headers, override link rule)
-      - name: Build firmware
+      - name: Build firmware (isolate paths, expose headers, override link rule)
         run: |
           set -euxo pipefail
           cd klipper
@@ -39,12 +35,12 @@ jobs:
           rm -rf out
           mkdir -p out/board-generic
 
-          # Expose sources/headers ONLY via the board dir
-          ln -sfn ../src     out/board-generic/src
-          ln -sfn ../include out/board-generic/include
+          # Expose sources/headers via board dir
+          ln -sfn ../src            out/board-generic/src
+          ln -sfn ../include        out/board-generic/include
+          ln -sfn ../include/board  out/board-generic/board   # <-- provides board/io.h
 
-          # Force out/board to ALWAYS point at board-generic (not repo root):
-          # In `make`, the LAST rule wins — append our override.
+          # Force out/board -> out/board-generic (override: last rule wins)
           {
             echo '';
             echo 'create-board-link:';
@@ -52,19 +48,18 @@ jobs:
             echo '	ln -snf $(BOARD_DIRECTORY) out/board';
           } >> Makefile
 
-          # Debug: show the overridden rule and our links
+          # Debug visibility
           tail -n 12 Makefile
           ls -l out
           ls -l out/board-generic
 
-          # Build single-threaded with our forced board directory
+          # Build single-threaded with forced board dir
           make BOARD_DIRECTORY=out/board-generic clean
           make -j1 BOARD_DIRECTORY=out/board-generic
 
-          # Prove final link target
+          # Show final link target
           ls -l out
 
-      # Upload the built firmware + the exact config used
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
