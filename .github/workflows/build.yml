@@ -7,47 +7,64 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout config repo (this repo)
+      # Checkout your repo (holds .config)
+      - name: Checkout config repo
         uses: actions/checkout@v4
         with:
           path: myrepo
 
-      - name: Checkout Klipper sources
+      # Checkout upstream Klipper sources
+      - name: Checkout Klipper
         uses: actions/checkout@v4
         with:
           repository: Klipper3d/klipper
           path: klipper
-          # ref: v0.12.0  # optional pin
+          # Optional: pin to a tag known-good for you
+          # ref: v0.12.0
 
+      # Toolchain
       - name: Install ARM toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      - name: Build firmware (override Makefile target so no double-scan)
+      # Build (isolate source path, expose headers, override link rule)
+      - name: Build firmware
         run: |
           set -euxo pipefail
           cd klipper
           cp ../myrepo/.config .config
 
-          # Start clean
+          # Clean slate
           rm -rf out
           mkdir -p out/board-generic
 
-          # *** CRITICAL: Append a new rule that overrides the built-in one ***
-          # Last rule wins; this forces out/board -> out/board-generic every time.
-          printf '\ncreate-board-link:\n\t@mkdir -p $(BOARD_DIRECTORY)\n\tln -snf $(BOARD_DIRECTORY) out/board\n' >> Makefile
+          # Expose sources/headers ONLY via the board dir
+          ln -sfn ../src     out/board-generic/src
+          ln -sfn ../include out/board-generic/include
 
-          # Show the rule we just appended (debug)
-          tail -n 10 Makefile
+          # Force out/board to ALWAYS point at board-generic (not repo root):
+          # In `make`, the LAST rule wins — append our override.
+          {
+            echo '';
+            echo 'create-board-link:';
+            echo '	@mkdir -p $(BOARD_DIRECTORY)';
+            echo '	ln -snf $(BOARD_DIRECTORY) out/board';
+          } >> Makefile
+
+          # Debug: show the overridden rule and our links
+          tail -n 12 Makefile
+          ls -l out
+          ls -l out/board-generic
 
           # Build single-threaded with our forced board directory
           make BOARD_DIRECTORY=out/board-generic clean
           make -j1 BOARD_DIRECTORY=out/board-generic
 
-          # Prove where out/board points
+          # Prove final link target
           ls -l out
 
+      # Upload the built firmware + the exact config used
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
