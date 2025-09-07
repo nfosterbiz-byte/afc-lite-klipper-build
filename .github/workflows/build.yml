@@ -1,44 +1,52 @@
 name: klipper-afc-lite-h723-usb-build
-on: { workflow_dispatch: {} }
+
+on:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with: { repository: Klipper3d/klipper, path: klipper, fetch-depth: 1 }
+      - name: Checkout Klipper
+        uses: actions/checkout@v4
+        with:
+          repository: Klipper3d/klipper
+          path: klipper
+          fetch-depth: 1
 
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: build
-        working-directory: klipper
+      - name: Install toolchain
         run: |
-          set -eux
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3
-          # Force STM32H723 + USB + 25MHz, no bootloader
-          cat > .config <<'EOF'
-CONFIG_LOW_LEVEL_OPTIONS=y
-CONFIG_MACH_STM32=y
-CONFIG_STM32H7=y
-CONFIG_MCU="stm32h723"
-CONFIG_CLOCK_REF_25MHZ=y
-CONFIG_FLASH_BOOTLOADER=y
-CONFIG_FLASH_BOOTLOADER_0K=y
-CONFIG_USB_SERIAL=y
-# CONFIG_CANBUS is not set
-EOF
+
+      - name: Build (STM32H723 + USB + 25MHz, no bootloader)
+        working-directory: klipper
+        run: |
+          set -euxo pipefail
+          printf "%s\n" \
+            "CONFIG_LOW_LEVEL_OPTIONS=y" \
+            "CONFIG_MACH_STM32=y" \
+            "CONFIG_STM32H7=y" \
+            'CONFIG_MCU="stm32h723"' \
+            "CONFIG_CLOCK_REF_25MHZ=y" \
+            "CONFIG_FLASH_BOOTLOADER=y" \
+            "CONFIG_FLASH_BOOTLOADER_0K=y" \
+            "CONFIG_USB_SERIAL=y" \
+            "# CONFIG_CANBUS is not set" > .config
           make olddefconfig
           make clean
           make -j1 V=1
           mkdir -p artifacts
           cp -v out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin
           cp -v .config       artifacts/.config_used
-          echo "---- toolchain check (should show arm-none-eabi-gcc) ----"
-          grep -Rsn "arm-none-eabi-gcc" out || true
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: klipper-afc-lite-h723-usb
           path: klipper/artifacts/*
