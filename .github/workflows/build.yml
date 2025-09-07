@@ -1,4 +1,4 @@
-name: Build Klipper AFC-Lite (STM32H723) — dual clock 
+name: klipper-afc-lite-build
 
 on:
   workflow_dispatch:
@@ -15,14 +15,12 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      # Your repo (holds .config)
       - name: Checkout my repo (config)
         uses: actions/checkout@v4
         with:
           path: myrepo
           fetch-depth: 1
 
-      # Upstream Klipper
       - name: Checkout Klipper
         uses: actions/checkout@v4
         with:
@@ -47,7 +45,7 @@ jobs:
           git reset --hard
           git clean -xfd
 
-      - name: Debug: scan for duplicate 'identify' declarations
+      - name: Debug: scan for duplicate identify
         working-directory: klipper
         run: |
           set -euxo pipefail
@@ -57,17 +55,16 @@ jobs:
         working-directory: klipper
         run: |
           set -euxo pipefail
-          # Base: your config
           cp ../myrepo/.config .config
 
-          # ---- Variant A: 25 MHz (as in your .config) ----
+          # Variant A: 25 MHz (as in your .config)
           make clean
           make -j1
           mkdir -p ../artifacts
           cp -v out/klipper.bin ../artifacts/klipper_h723_25mhz.bin
           cp -v .config         ../artifacts/.config_25mhz
 
-          # ---- Variant B: Internal 8 MHz ----
+          # Variant B: Internal 8 MHz
           if grep -q '^CONFIG_CLOCK_REF_25MHZ=y' .config; then
             sed -i 's/^CONFIG_CLOCK_REF_25MHZ=y/# CONFIG_CLOCK_REF_25MHZ is not set/' .config
           fi
