@@ -24,12 +24,15 @@ jobs:
         working-directory: klipper
         run: |
           set -eux
+
+          # Clean (do NOT use distclean, it nukes .config)
           make clean || true
 
-          # Write minimal .config for H723 USB 25MHz (no bootloader)
+          # Write a minimal, explicit H723 config
           : > .config
           echo 'CONFIG_LOW_LEVEL_OPTIONS=y'   >> .config
           echo 'CONFIG_MACH_STM32=y'          >> .config
+          echo 'CONFIG_MACH_STM32H723=y'      >> .config   # <<--- THIS is the key
           echo 'CONFIG_STM32H7=y'             >> .config
           echo 'CONFIG_MCU="stm32h723"'       >> .config
           echo 'CONFIG_CLOCK_REF_25MHZ=y'     >> .config
@@ -38,31 +41,27 @@ jobs:
           echo 'CONFIG_USB_SERIAL=y'          >> .config
           # echo '# CONFIG_CANBUS is not set' >> .config
 
-          # Force ARM path so it cannot fall back to AVR
+          # Lock to ARM; fill defaults
           make ARCH=arm olddefconfig
+
+          # Sanity check: fail immediately if it didn't pick H723
+          grep -q '^CONFIG_MACH_STM32H723=y' .config || { echo "Not H723!"; cat .config; exit 1; }
+
+          # Build (V=1 shows the compiler; should be arm-none-eabi-gcc)
           make ARCH=arm -j1 V=1
 
-          # Collect artifacts (inside klipper/)
+          # Collect artifacts
           mkdir -p artifacts
           cp -v out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin
+          cp -v .config         artifacts/config_used.txt
 
-          # Save a NON-dot filename with the exact config used
-          cp -v .config artifacts/config_used.txt
-
-          # Also include quick build info & autoconf hints
-          {
-            echo "Toolchain lines (expect arm-none-eabi-gcc):"
-            grep -Rsn "arm-none-eabi-gcc" out || true
-            echo
-            echo "autoconf.h hints (STM32/H7/H723/USB):"
-            grep -E "STM32|H7|H723|USB" -n out/autoconf.h || true
-            echo
-            echo "Binary size:"
-            stat -c '%n %s bytes' artifacts/klipper_h723_usb_25mhz_noboot.bin
-          } > artifacts/build_info.txt
-
-          echo '--- artifacts dir contents ---'
-          ls -lah artifacts
+          # Quick breadcrumbs
+          echo "=== Expect arm-none-eabi-gcc in compile lines ==="
+          grep -Rsn "arm-none-eabi-gcc" out || true
+          echo "=== Autoconf hints ==="
+          grep -E "STM32|H7|H723|USB" -n out/autoconf.h || true
+          echo "=== Artifact sizes ==="
+          stat -c '%n %s bytes' artifacts/* || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
