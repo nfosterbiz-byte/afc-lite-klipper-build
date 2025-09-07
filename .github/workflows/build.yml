@@ -14,14 +14,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Your repo (holds .config)
       - name: Checkout config repo
         uses: actions/checkout@v4
         with:
           path: myrepo
           fetch-depth: 1
 
-      # Upstream Klipper source
       - name: Checkout Klipper
         uses: actions/checkout@v4
         with:
@@ -39,6 +37,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
+      # NEW: list every place "identify" is declared so we can spot duplicates
+      - name: Debug - scan for duplicate identify
+        working-directory: klipper
+        run: |
+          set -euxo pipefail
+          echo '--- searching for DECL_COMMAND("identify" ...) ---'
+          git grep -n 'DECL_COMMAND("identify"'
+          echo '--- end search ---' || true
+
       - name: Build firmware (25MHz and Internal)
         working-directory: klipper
         run: |
@@ -49,17 +56,17 @@ jobs:
           make clean
           make -j1
           mkdir -p ../artifacts
-          cp -v out/klipper.bin ../artifacts/klipper_h723_25mhz.bin
-          cp -v .config         ../artifacts/.config_25mhz
+          cp -v out/klipper.bin ../artifacts/klipper_h723_25mhz.bin || true
+          cp -v .config         ../artifacts/.config_25mhz       || true
 
-          # Variant B: Internal 8MHz (toggle flags)
+          # Variant B: Internal 8MHz
           sed -i 's/^CONFIG_CLOCK_REF_25MHZ=y/# CONFIG_CLOCK_REF_25MHZ is not set/' .config || true
           grep -q '^CONFIG_CLOCK_REF_INTERNAL=y' .config || printf '\nCONFIG_CLOCK_REF_INTERNAL=y\n' >> .config
 
           make clean
           make -j1
-          cp -v out/klipper.bin ../artifacts/klipper_h723_internal.bin
-          cp -v .config         ../artifacts/.config_internal
+          cp -v out/klipper.bin ../artifacts/klipper_h723_internal.bin || true
+          cp -v .config         ../artifacts/.config_internal          || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
