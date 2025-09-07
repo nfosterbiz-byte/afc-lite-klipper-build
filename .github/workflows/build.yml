@@ -1,4 +1,4 @@
-name: klipper-afc-lite-build 
+name: klipper-afc-lite-build
 
 on:
   workflow_dispatch:
@@ -37,45 +37,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # Stronger duplicate "identify" probe that will NOT fail the job
-      - name: Debug - find duplicate identify command
+      # Quick sanity: ensure the config is present and looks like STM32H7
+      - name: Show config header
         working-directory: klipper
         run: |
-          set -euxo pipefail
-          echo '--- searching for DECL_COMMAND("identify") in tracked sources ---'
-          (git grep -n 'DECL_COMMAND("identify"' || true)
-          echo '--- searching for "identify" in src/ (tracked) ---'
-          (git grep -n '"identify"' -- src || true)
-          echo '--- searching for "identify" anywhere in the Klipper tree (tracked + generated) ---'
-          (grep -Rsn --include='*.[cChH]' --include='*.py' --include='Makefile*' '"identify"' . || true)
-          echo '--- listing any extra C sources compiled (from Makefile var dump) ---'
-          (make -n 2>/dev/null | sed -n '1,120p' || true)
-          echo '--- done ---'
-
-      - name: Build firmware (25MHz and Internal)
-        working-directory: klipper
-        run: |
-          set -euxo pipefail
           cp ../myrepo/.config .config
+          grep -E 'CONFIG_MACH_|CONFIG_STM32|CONFIG_MCU=|CONFIG_CLOCK_REF_|CONFIG_FLASH_BOOTLOADER|CONFIG_USB_SERIAL|CONFIG_CANBUS' .config || true
 
-          # Variant A: 25MHz (as in your .config)
+      - name: Build firmware (STM32H723 + USB)
+        working-directory: klipper
+        run: |
+          set -euxo pipefail
+          # Use your committed .config (already copied above)
           make clean
           make -j1
           mkdir -p ../artifacts
-          cp -v out/klipper.bin ../artifacts/klipper_h723_25mhz.bin || true
-          cp -v .config         ../artifacts/.config_25mhz       || true
-
-          # Variant B: Internal 8MHz
-          sed -i 's/^CONFIG_CLOCK_REF_25MHZ=y/# CONFIG_CLOCK_REF_25MHZ is not set/' .config || true
-          grep -q '^CONFIG_CLOCK_REF_INTERNAL=y' .config || printf '\nCONFIG_CLOCK_REF_INTERNAL=y\n' >> .config
-
-          make clean
-          make -j1
-          cp -v out/klipper.bin ../artifacts/klipper_h723_internal.bin || true
-          cp -v .config         ../artifacts/.config_internal          || true
+          cp -v out/klipper.bin ../artifacts/klipper_h723_usb_25mhz_noboot.bin
+          cp -v .config         ../artifacts/.config_used
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: klipper-afc-lite-h723-dual
+          name: klipper-afc-lite-h723-usb
           path: artifacts/*
