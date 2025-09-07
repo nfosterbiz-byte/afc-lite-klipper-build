@@ -17,37 +17,35 @@ jobs:
         with:
           repository: Klipper3d/klipper
           path: klipper
-          # You can pin to a release if you prefer:
-          # ref: v0.12.0
+          # ref: v0.12.0  # optional pin
 
       - name: Install ARM toolchain & deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      - name: Patch Makefile to force board link, then build (single-thread)
+      - name: Build firmware (override Makefile target so no double-scan)
         run: |
           set -euxo pipefail
           cd klipper
           cp ../myrepo/.config .config
 
-          # 1) Patch the create-board-link rule so it never points to '.'
-          # Original line is like:
-          #   ln -snf $(if $(wildcard out/board-link),$(BOARD_DIRECTORY),.) out/board
-          # Replace it to always use $(BOARD_DIRECTORY)
-          sed -i -E 's|ln -snf .*\$\(BOARD_DIRECTORY\).*|ln -snf $(BOARD_DIRECTORY) out/board|' Makefile
-          sed -i -E 's|ln -snf .* out/board|ln -snf $(BOARD_DIRECTORY) out/board|' Makefile
-
-          # 2) Clean and build with an explicit BOARD_DIRECTORY
+          # Start clean
           rm -rf out
           mkdir -p out/board-generic
-          # Touch the marker (not strictly needed after the patch, but harmless)
-          : > out/board-link
 
+          # *** CRITICAL: Append a new rule that overrides the built-in one ***
+          # Last rule wins; this forces out/board -> out/board-generic every time.
+          printf '\ncreate-board-link:\n\t@mkdir -p $(BOARD_DIRECTORY)\n\tln -snf $(BOARD_DIRECTORY) out/board\n' >> Makefile
+
+          # Show the rule we just appended (debug)
+          tail -n 10 Makefile
+
+          # Build single-threaded with our forced board directory
           make BOARD_DIRECTORY=out/board-generic clean
           make -j1 BOARD_DIRECTORY=out/board-generic
 
-          # Show what got created (for debugging if needed)
+          # Prove where out/board points
           ls -l out
 
       - name: Upload artifact
