@@ -2,11 +2,6 @@ name: klipper-afc-lite-h723-usb-build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - '.github/workflows/build.yml'
-      - 'klipper/**'
 
 jobs:
   build:
@@ -28,38 +23,35 @@ jobs:
       - name: Install ARM toolchain and deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3
 
-      # Write a fresh .config for STM32H723 + USB + 25MHz, no bootloader, then resolve defaults
-      - name: Create H723 USB 25MHz .config
+      - name: Create .config for STM32H723 + USB + 25MHz (no bootloader)
         working-directory: klipper
         run: |
           set -euxo pipefail
-          cat > .config <<'EOF'
-# ==== Klipper MCU Configuration: AFC-Lite (STM32H723) USB, 25MHz, No Bootloader ====
+          python3 - << 'PY'
+from pathlib import Path
+cfg = """# ==== Klipper MCU Configuration: AFC-Lite (STM32H723) USB, 25MHz, No Bootloader ====
 CONFIG_LOW_LEVEL_OPTIONS=y
 CONFIG_MACH_STM32=y
 CONFIG_STM32H7=y
 CONFIG_MCU="stm32h723"
-
-# Clock source
 CONFIG_CLOCK_REF_25MHZ=y
 # CONFIG_CLOCK_REF_INTERNAL is not set
-
-# Bootloader offset: 0 KiB (DFU direct)
 CONFIG_FLASH_BOOTLOADER=y
 CONFIG_FLASH_BOOTLOADER_0K=y
 # CONFIG_FLASH_BOOTLOADER_32K is not set
 # CONFIG_FLASH_BOOTLOADER_64K is not set
 # CONFIG_FLASH_BOOTLOADER_128K is not set
-
-# Interface
 CONFIG_USB_SERIAL=y
 # CONFIG_CANBUS is not set
-# ==== end ====
-EOF
+"""
+Path(".config").write_text(cfg)
+print("Wrote .config:")
+print(cfg)
+PY
           make olddefconfig
-          echo '--- sanity: key Kconfig symbols ---'
+          echo "Key symbols:"
           grep -E 'CONFIG_MACH_|CONFIG_STM32|CONFIG_MCU=|CONFIG_CLOCK_REF_|CONFIG_FLASH_BOOTLOADER|CONFIG_USB_SERIAL|CONFIG_CANBUS' .config || true
 
       - name: Build firmware (H723 USB)
@@ -67,35 +59,15 @@ EOF
         run: |
           set -euxo pipefail
           make clean
-          # V=1 prints compiler, should show arm-none-eabi-gcc
           make -j1 V=1
           mkdir -p ../artifacts
           cp -v out/klipper.bin ../artifacts/klipper_h723_usb_25mhz_noboot.bin
           cp -v .config         ../artifacts/.config_used
-          echo "---- autoconf hints ----"
-          grep -E "STM32|H7|H723|USB" -n out/autoconf.h || true
+          echo "---- toolchain check (should show arm-none-eabi-gcc) ----"
+          grep -Rsn "arm-none-eabi-gcc" out || true
 
-      # If the build fails at the command table stage, dump where "identify" is coming from
-      - name: Post-failure diagnostics
-        if: failure()
-        working-directory: klipper
-        run: |
-          set -euxo pipefail
-          echo '--- toolchain seen in compile lines (expect arm-none-eabi-gcc) ---'
-          (grep -Rsn "gcc " out 2>/dev/null || true)
-          echo '--- which .ctr chunks contain "identify" ---'
-          (grep -Rsn "identify" out/src 2>/dev/null || true)
-          echo '--- list all .ctr files (for inspection) ---'
-          (ls -lah out/src/*.ctr 2>/dev/null || true)
-
-      - name: Upload artifact (even if partial)
-        if: always()
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: klipper-afc-lite-h723-usb
-          path: |
-            klipper/artifacts/*
-            klipper/out/src/*.ctr
-            klipper/out/autoconf.h
-            klipper/.config
-          if-no-files-found: warn
+          path: klipper/artifacts/*
