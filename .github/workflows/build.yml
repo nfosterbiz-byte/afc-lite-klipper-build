@@ -28,27 +28,35 @@ jobs:
 
           # Write minimal .config for H723 USB 25MHz (no bootloader)
           : > .config
-          echo 'CONFIG_LOW_LEVEL_OPTIONS=y'       >> .config
-          echo 'CONFIG_MACH_STM32=y'              >> .config
-          echo 'CONFIG_STM32H7=y'                 >> .config
-          echo 'CONFIG_MCU="stm32h723"'           >> .config
-          echo 'CONFIG_CLOCK_REF_25MHZ=y'         >> .config
-          echo 'CONFIG_FLASH_BOOTLOADER=y'        >> .config
-          echo 'CONFIG_FLASH_BOOTLOADER_0K=y'     >> .config
-          echo 'CONFIG_USB_SERIAL=y'              >> .config
-          # echo '# CONFIG_CANBUS is not set'     >> .config
+          echo 'CONFIG_LOW_LEVEL_OPTIONS=y'     >> .config
+          echo 'CONFIG_MACH_STM32=y'            >> .config
+          echo 'CONFIG_STM32H7=y'               >> .config
+          echo 'CONFIG_MCU="stm32h723"'         >> .config
+          echo 'CONFIG_CLOCK_REF_25MHZ=y'       >> .config
+          echo 'CONFIG_FLASH_BOOTLOADER=y'      >> .config
+          echo 'CONFIG_FLASH_BOOTLOADER_0K=y'   >> .config
+          echo 'CONFIG_USB_SERIAL=y'            >> .config
+          # echo '# CONFIG_CANBUS is not set'   >> .config
 
-          # Lock to ARM path so it can’t fall back to AVR
+          # Lock build to ARM
           make ARCH=arm olddefconfig
           make ARCH=arm -j1 V=1
 
-          # Collect artifacts (inside klipper/)
+          # Collect artifacts inside klipper/
           mkdir -p artifacts
-          cp out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin
-          cp .config         artifacts/.config_used
+          cp -v out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin
+          cp -v .config         artifacts/.config_used
+
+          echo '--- artifact contents ---'
+          ls -lah artifacts
+          echo '--- bin size ---'
+          stat -c '%n %s bytes' artifacts/klipper_h723_usb_25mhz_noboot.bin
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: klipper-afc-lite-h723-usb
-          path: klipper/artifacts/*
+          path: |
+            klipper/artifacts/klipper_h723_usb_25mhz_noboot.bin
+            klipper/artifacts/.config_used
+          if-no-files-found: error
