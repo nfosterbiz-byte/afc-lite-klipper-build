@@ -14,7 +14,7 @@ jobs:
           path: klipper
           fetch-depth: 1
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -24,26 +24,58 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3
 
-      - name: Build (STM32H723 + USB + 25MHz, no bootloader)
+      - name: Write .config (STM32H723 + USB + 25MHz, no bootloader)
         working-directory: klipper
         run: |
           set -euxo pipefail
-          printf "%s\n" \
-            "CONFIG_LOW_LEVEL_OPTIONS=y" \
-            "CONFIG_MACH_STM32=y" \
-            "CONFIG_STM32H7=y" \
-            'CONFIG_MCU="stm32h723"' \
-            "CONFIG_CLOCK_REF_25MHZ=y" \
-            "CONFIG_FLASH_BOOTLOADER=y" \
-            "CONFIG_FLASH_BOOTLOADER_0K=y" \
-            "CONFIG_USB_SERIAL=y" \
-            "# CONFIG_CANBUS is not set" > .config
+          cat > .config <<'EOF'
+CONFIG_LOW_LEVEL_OPTIONS=y
+
+# MCU family / chip
+CONFIG_MACH_STM32=y
+CONFIG_STM32H7=y
+CONFIG_MCU="stm32h723"
+
+# Clock source
+CONFIG_CLOCK_REF_25MHZ=y
+# CONFIG_CLOCK_REF_INTERNAL is not set
+
+# Bootloader offset (DFU direct, no bootloader)
+CONFIG_FLASH_BOOTLOADER=y
+CONFIG_FLASH_BOOTLOADER_0K=y
+# CONFIG_FLASH_BOOTLOADER_32K is not set
+# CONFIG_FLASH_BOOTLOADER_64K is not set
+# CONFIG_FLASH_BOOTLOADER_128K is not set
+
+# Interface
+CONFIG_USB_SERIAL=y
+# CONFIG_CANBUS is not set
+EOF
+          # Resolve defaults and show key symbols
           make olddefconfig
-          make clean
-          make -j1 V=1
+          echo "=== Key Kconfig symbols ==="
+          grep -E 'CONFIG_MACH_|CONFIG_STM32|CONFIG_MCU=|CONFIG_CLOCK_REF_|CONFIG_FLASH_BOOTLOADER|CONFIG_USB_SERIAL|CONFIG_CANBUS' .config || true
+
+      - name: Build (force ARM toolchain)
+        working-directory: klipper
+        run: |
+          set -euxo pipefail
+          # Start from a truly clean state
+          make ARCH=arm distclean || true
+          cp .config .config.backup
+          # Restore .config after distclean nukes it
+          mv .config.backup .config
+          make ARCH=arm olddefconfig
+          make ARCH=arm clean
+          # V=1 shows the actual compiler (should be arm-none-eabi-gcc)
+          make ARCH=arm -j1 V=1
           mkdir -p artifacts
           cp -v out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin
           cp -v .config       artifacts/.config_used
+          echo "=== Toolchain check (expect arm-none-eabi-gcc) ==="
+          grep -Rsn "arm-none-eabi-gcc" out || true
+          echo "=== Autoconf hints ==="
+          grep -E "STM32|H7|H723|USB" -n out/autoconf.h || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
