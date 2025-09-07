@@ -6,7 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Klipper (upstream)
         uses: actions/checkout@v4
@@ -18,20 +17,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install ARM toolchain and deps
+      - name: Install ARM toolchain and make
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3
 
-      - name: Create .config for STM32H723 + USB + 25MHz (no bootloader)
+      - name: Create .config (STM32H723 + USB + 25MHz, no bootloader)
         working-directory: klipper
         run: |
           set -euxo pipefail
-          python3 - << 'PY'
-from pathlib import Path
-cfg = """# ==== Klipper MCU Configuration: AFC-Lite (STM32H723) USB, 25MHz, No Bootloader ====
+          cat > .config << 'EOF'
+# ==== Klipper MCU Configuration: AFC-Lite (STM32H723) USB, 25MHz, No Bootloader ====
 CONFIG_LOW_LEVEL_OPTIONS=y
 CONFIG_MACH_STM32=y
 CONFIG_STM32H7=y
@@ -45,11 +43,8 @@ CONFIG_FLASH_BOOTLOADER_0K=y
 # CONFIG_FLASH_BOOTLOADER_128K is not set
 CONFIG_USB_SERIAL=y
 # CONFIG_CANBUS is not set
-"""
-Path(".config").write_text(cfg)
-print("Wrote .config:")
-print(cfg)
-PY
+# ==== end ====
+EOF
           make olddefconfig
           echo "Key symbols:"
           grep -E 'CONFIG_MACH_|CONFIG_STM32|CONFIG_MCU=|CONFIG_CLOCK_REF_|CONFIG_FLASH_BOOTLOADER|CONFIG_USB_SERIAL|CONFIG_CANBUS' .config || true
