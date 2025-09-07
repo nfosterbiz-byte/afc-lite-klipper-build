@@ -1,4 +1,4 @@
-name: Build Klipper AFC-Lite (STM32H723) — dual clock
+name: Build Klipper AFC-Lite (STM32H723) — dual clock 
 
 on:
   workflow_dispatch:
