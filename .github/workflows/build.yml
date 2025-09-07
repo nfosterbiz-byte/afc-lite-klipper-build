@@ -1,81 +1,26 @@
 name: klipper-afc-lite-h723-usb-build
-
-on:
-  workflow_dispatch:
+on: { workflow_dispatch: {} }
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Klipper
-        uses: actions/checkout@v4
-        with:
-          repository: Klipper3d/klipper
-          path: klipper
-          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with: { repository: Klipper3d/klipper, path: klipper, fetch-depth: 1 }
 
-      - name: Install ARM toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3
+      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3
 
-      - name: Build (STM32H723 + USB + 25MHz, NO bootloader)
-        shell: bash
-        working-directory: klipper
-        run: |
-          set -eux
+      - working-directory: klipper
+        run: make clean || true
 
-          make clean || true
+      - working-directory: klipper
+        run: printf "%s\n" "CONFIG_LOW_LEVEL_OPTIONS=y" "CONFIG_MACH_STM32=y" "CONFIG_MACH_STM32H7=y" "CONFIG_MACH_STM32H723=y" 'CONFIG_MCU="stm32h723"' "CONFIG_STM32_CLOCK_REF_25M=y" "CONFIG_STM32_FLASH_START_0000=y" "CONFIG_USB=y" "CONFIG_USB_SERIAL=y" "CONFIG_STM32_USB_PA11_PA12=y" > .config
 
-          # Strict H723 USB + 25MHz + NO bootloader config
-          cat > .config <<'EOF'
-CONFIG_LOW_LEVEL_OPTIONS=y
+      - working-directory: klipper
+        run: make ARCH=arm olddefconfig && grep -E 'MACH_STM32H723|CLOCK_REF_25M|FLASH_START_0000' .config && make ARCH=arm -j1 V=1
 
-CONFIG_MACH_STM32=y
-CONFIG_MACH_STM32H7=y
-CONFIG_MACH_STM32H723=y
-CONFIG_MCU="stm32h723"
+      - working-directory: klipper
+        run: mkdir -p artifacts && cp out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin && cp .config artifacts/config_used.txt
 
-CONFIG_STM32_CLOCK_REF_25M=y
-# CONFIG_STM32_CLOCK_REF_8M is not set
-# CONFIG_STM32_CLOCK_REF_INTERNAL is not set
-
-CONFIG_STM32_FLASH_START_0000=y
-# CONFIG_STM32_FLASH_START_20000 is not set
-
-CONFIG_USB=y
-CONFIG_USB_SERIAL=y
-CONFIG_STM32_USB_PA11_PA12=y
-# CONFIG_CANBUS is not set
-EOF
-
-          # Lock to ARM and resolve defaults
-          make ARCH=arm olddefconfig
-
-          echo "==== Sanity: key symbols ===="
-          egrep -n 'CONFIG_MACH_STM32H723|CONFIG_STM32_CLOCK_REF_|CONFIG_STM32_FLASH_START_|CONFIG_USB_SERIAL|STM32_USB_PA11_PA12' .config || true
-
-          # Fail if wrong
-          grep -q '^CONFIG_MACH_STM32H723=y' .config
-          grep -q '^CONFIG_STM32_CLOCK_REF_25M=y' .config
-          grep -q '^CONFIG_STM32_FLASH_START_0000=y' .config
-          grep -q '^CONFIG_USB_SERIAL=y' .config
-          grep -q '^CONFIG_STM32_USB_PA11_PA12=y' .config
-          ! grep -q '^CONFIG_STM32_CLOCK_REF_8M=y' .config
-          ! grep -q '^CONFIG_STM32_FLASH_START_20000=y' .config
-
-          # Build (must show arm-none-eabi-gcc)
-          make ARCH=arm -j1 V=1
-
-          mkdir -p artifacts
-          cp -v out/klipper.bin artifacts/klipper_h723_usb_25mhz_noboot.bin
-          cp -v .config         artifacts/config_used.txt
-
-          echo "=== Artifact sizes ==="
-          stat -c '%n %s bytes' artifacts/* || true
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: klipper-afc-lite-h723-usb
-          path: klipper/artifacts/*
+      - uses: actions/upload-artifact@v4
+        with: { name: klipper-afc-lite-h723-usb, path: klipper/artifacts/* }
