@@ -37,15 +37,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # NEW: safer and broader duplicate check
-      - name: Debug - scan for duplicate identify
+      # Stronger duplicate "identify" probe that will NOT fail the job
+      - name: Debug - find duplicate identify command
         working-directory: klipper
         run: |
           set -euxo pipefail
-          echo '--- searching for DECL_COMMAND("identify") ---'
+          echo '--- searching for DECL_COMMAND("identify") in tracked sources ---'
           (git grep -n 'DECL_COMMAND("identify"' || true)
-          echo '--- searching anywhere for the string "identify" in C sources ---'
+          echo '--- searching for "identify" in src/ (tracked) ---'
           (git grep -n '"identify"' -- src || true)
+          echo '--- searching for "identify" anywhere in the Klipper tree (tracked + generated) ---'
+          (grep -Rsn --include='*.[cChH]' --include='*.py' --include='Makefile*' '"identify"' . || true)
+          echo '--- listing any extra C sources compiled (from Makefile var dump) ---'
+          (make -n 2>/dev/null | sed -n '1,120p' || true)
           echo '--- done ---'
 
       - name: Build firmware (25MHz and Internal)
