@@ -1,4 +1,4 @@
-name: klipper-afc-lite-build
+name: klipper-afc-lite-build 
 
 on:
   workflow_dispatch:
