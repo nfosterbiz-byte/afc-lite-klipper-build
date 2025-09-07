@@ -3,8 +3,7 @@ name: klipper-afc-lite-build
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
       - '.github/workflows/build.yml'
       - 'myrepo/.config'
@@ -12,15 +11,17 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout my repo (config)
+      # Your repo (holds .config)
+      - name: Checkout config repo
         uses: actions/checkout@v4
         with:
           path: myrepo
           fetch-depth: 1
 
+      # Upstream Klipper source
       - name: Checkout Klipper
         uses: actions/checkout@v4
         with:
@@ -33,44 +34,27 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install ARM toolchain & deps
+      - name: Install ARM toolchain and deps
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      - name: Sanity reset Klipper tree
-        working-directory: klipper
-        run: |
-          set -euxo pipefail
-          git reset --hard
-          git clean -xfd
-
-      - name: Debug: scan for duplicate identify
-        working-directory: klipper
-        run: |
-          set -euxo pipefail
-          (git grep -n 'DECL_COMMAND("identify"' || true)
-
-      - name: Build firmware (25MHz & Internal)
+      - name: Build firmware (25MHz and Internal)
         working-directory: klipper
         run: |
           set -euxo pipefail
           cp ../myrepo/.config .config
 
-          # Variant A: 25 MHz (as in your .config)
+          # Variant A: 25MHz (as in your .config)
           make clean
           make -j1
           mkdir -p ../artifacts
           cp -v out/klipper.bin ../artifacts/klipper_h723_25mhz.bin
           cp -v .config         ../artifacts/.config_25mhz
 
-          # Variant B: Internal 8 MHz
-          if grep -q '^CONFIG_CLOCK_REF_25MHZ=y' .config; then
-            sed -i 's/^CONFIG_CLOCK_REF_25MHZ=y/# CONFIG_CLOCK_REF_25MHZ is not set/' .config
-          fi
-          if ! grep -q '^CONFIG_CLOCK_REF_INTERNAL=y' .config; then
-            printf '\nCONFIG_CLOCK_REF_INTERNAL=y\n' >> .config
-          fi
+          # Variant B: Internal 8MHz (toggle flags)
+          sed -i 's/^CONFIG_CLOCK_REF_25MHZ=y/# CONFIG_CLOCK_REF_25MHZ is not set/' .config || true
+          grep -q '^CONFIG_CLOCK_REF_INTERNAL=y' .config || printf '\nCONFIG_CLOCK_REF_INTERNAL=y\n' >> .config
 
           make clean
           make -j1
