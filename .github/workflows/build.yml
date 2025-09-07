@@ -37,14 +37,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi make python3 libncurses-dev
 
-      # NEW: list every place "identify" is declared so we can spot duplicates
+      # NEW: safer and broader duplicate check
       - name: Debug - scan for duplicate identify
         working-directory: klipper
         run: |
           set -euxo pipefail
-          echo '--- searching for DECL_COMMAND("identify" ...) ---'
-          git grep -n 'DECL_COMMAND("identify"'
-          echo '--- end search ---' || true
+          echo '--- searching for DECL_COMMAND("identify") ---'
+          (git grep -n 'DECL_COMMAND("identify"' || true)
+          echo '--- searching anywhere for the string "identify" in C sources ---'
+          (git grep -n '"identify"' -- src || true)
+          echo '--- done ---'
 
       - name: Build firmware (25MHz and Internal)
         working-directory: klipper
